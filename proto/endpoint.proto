@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package proto;
+
+// API defines the API configuration for a service. It contains a list of
+// Endpoints, each with specific information about the endpoint's action.
+message API {
+  repeated Endpoint endpoint = 1;
+}
+
+// Endpoint defines extra details about a google.api.http RPC mapping.
+message Endpoint {
+  // unauthenticated must be true if the Endpoint is open to the public. This
+  // defaults to false.
+  bool unauthenticated = 1;
+}
