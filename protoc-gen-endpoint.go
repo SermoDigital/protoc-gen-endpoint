@@ -102,7 +102,7 @@ func getInfo(req *plugin.CodeGeneratorRequest) (ifs []Info, err error) {
 
 				ext, _ = proto.GetExtension(meth.Options, eproto.E_Endpoint)
 				endp, ok := ext.(*eproto.Endpoint)
-				unauth := ok && endp.Unauthenticated || false
+				unauth := ok && endp.Unauthenticated
 
 				prefix := strings.TrimSuffix(i.PkgName, "pb")
 				action := prefix + "." + *meth.Name
