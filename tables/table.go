@@ -23,8 +23,14 @@ type Mapping struct {
 }
 
 // NewMapping creates a new Mapping
-func NewMapping(fns ...func() Table) (*Mapping, error) {
-	return nil, nil
+func NewMapping(fns ...func() Table) *Mapping {
+	m := Mapping{t: make(Table)}
+	for _, fn := range fns {
+		for url, eps := range fn() {
+			m.t[url] = append(m.t[url], eps...)
+		}
+	}
+	return &m
 }
 
 // Mapping finds an endpoint based on a URL and HTTP method pair.
