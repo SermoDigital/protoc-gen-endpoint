@@ -87,8 +87,7 @@ func getInfo(req *plugin.CodeGeneratorRequest) (ifs []Info, err error) {
 		for _, srv := range pf.GetService() {
 			for _, meth := range srv.GetMethod() {
 				if meth.Options == nil ||
-					!proto.HasExtension(meth.Options, options.E_Http) ||
-					!proto.HasExtension(meth.Options, eproto.E_Endpoint) {
+					!proto.HasExtension(meth.Options, options.E_Http) {
 					continue
 				}
 
@@ -101,22 +100,20 @@ func getInfo(req *plugin.CodeGeneratorRequest) (ifs []Info, err error) {
 					return nil, fmt.Errorf("got %T, wanted *options.HttpRule", ext)
 				}
 
-				ext, err = proto.GetExtension(meth.Options, eproto.E_Endpoint)
-				if err != nil {
-					return nil, err
-				}
+				ext, _ = proto.GetExtension(meth.Options, eproto.E_Endpoint)
 				endp, ok := ext.(*eproto.Endpoint)
-				if !ok {
-					return nil, fmt.Errorf("got %T, wanted *eproto.Endpoint", ext)
-				}
+				unauth := ok && endp.Unauthenticated || false
 
-				err = parseTuple(http, i.Table, endp.Unauthenticated, "")
+				prefix := strings.TrimSuffix(i.PkgName, "pb")
+				action := prefix + "." + *meth.Name
+
+				err = parseTuple(http, i.Table, unauth, action)
 				if err != nil {
 					return nil, err
 				}
 
 				for _, http := range http.AdditionalBindings {
-					err := parseTuple(http, i.Table, endp.Unauthenticated, "")
+					err := parseTuple(http, i.Table, unauth, action)
 					if err != nil {
 						return nil, err
 					}
@@ -198,8 +195,8 @@ import "github.com/SermoDigital/protoc-gen-endpoint/tables"
 // Table returns a tables.Table containing the endpoints within a gRPC package.
 func Table() tables.Table {
 	return tables.Table{
-		{{ range $url, $eps := .Table -}}
-		{{- $url | printf "%q" }}: []tables.Endpoint{
+		{{- range $url, $eps := .Table }}
+		{{ $url | printf "%q" }}: []tables.Endpoint{
 			{{ range $ep := $eps -}}
 			{
 				Method: {{- $ep.Method | printf "%q" }},
