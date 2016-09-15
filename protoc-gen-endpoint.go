@@ -150,40 +150,32 @@ func pkgName(file *descriptor.FileDescriptorProto) string {
 
 // parseTuple parses a new tables.Endpoint from http and adds it to table.
 func parseTuple(http *options.HttpRule, tbl tables.Table, unauth bool, action string) error {
-	var (
-		url    string
-		method string
-	)
+	var url string
+	ep := tables.Endpoint{Unauthenticated: unauth, Action: action}
 	switch v := http.Pattern.(type) {
 	case *options.HttpRule_Get:
 		url = v.Get
-		method = "GET"
+		ep.Method = "GET"
 	case *options.HttpRule_Put:
 		url = v.Put
-		method = "PUT"
+		ep.Method = "PUT"
 	case *options.HttpRule_Post:
 		url = v.Post
-		method = "POST"
+		ep.Method = "POST"
 	case *options.HttpRule_Delete:
 		url = v.Delete
-		method = "DELETE"
+		ep.Method = "DELETE"
 	case *options.HttpRule_Patch:
 		url = v.Patch
-		method = "PATCH"
+		ep.Method = "PATCH"
 	case *options.HttpRule_Custom:
 		url = v.Custom.Path
-		method = v.Custom.Kind
+		ep.Method = v.Custom.Kind
 	default:
 		return fmt.Errorf("unknown http.Patten: %T", http.Pattern)
 	}
 
-	eps := tbl[url]
-	eps = append(eps, tables.Endpoint{
-		Method:          method,
-		Unauthenticated: unauth,
-		Action:          action,
-	})
-	tbl[url] = eps
+	tbl[url] = append(tbl[url], ep)
 	return nil
 }
 
