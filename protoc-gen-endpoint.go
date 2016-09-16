@@ -41,31 +41,27 @@ func main() {
 }
 
 func writeEndpoints(w io.Writer, req *plugin.CodeGeneratorRequest) error {
-	infos, err := getInfo(req)
+	info, err := getInfo(req)
 	if err != nil {
 		return err
 	}
+
 	t, err := template.New("tmpl").Parse(templ)
 	if err != nil {
 		return err
 	}
-
-	var files []*plugin.CodeGeneratorResponse_File
 	var buf bytes.Buffer
-	for _, info := range infos {
-		buf.Reset()
-		err = t.Execute(&buf, info)
-		if err != nil {
-			return err
-		}
-		fname := fmt.Sprintf("%s/%s.pb.ep.go", info.PkgName, info.PkgName)
-		files = append(files, &plugin.CodeGeneratorResponse_File{
-			Name:    proto.String(fname),
-			Content: proto.String(buf.String()),
-		})
+	err = t.Execute(&buf, info)
+	if err != nil {
+		return err
 	}
 
-	b, err := proto.Marshal(&plugin.CodeGeneratorResponse{File: files})
+	fname := fmt.Sprintf("%s/%s.pb.ep.go", info.PkgName, info.PkgName)
+	b, err := proto.Marshal(&plugin.CodeGeneratorResponse{
+		File: []*plugin.CodeGeneratorResponse_File{
+			{Name: proto.String(fname), Content: proto.String(buf.String())},
+		},
+	})
 	if err != nil {
 		return err
 	}
@@ -78,53 +74,57 @@ type Info struct {
 	Table   tables.Table
 }
 
-func getInfo(req *plugin.CodeGeneratorRequest) (ifs []Info, err error) {
-	for _, pf := range req.GetProtoFile() {
-		i := Info{
-			PkgName: pkgName(pf),
-			Table:   make(tables.Table),
-		}
-		for _, srv := range pf.GetService() {
-			for _, meth := range srv.GetMethod() {
-				if meth.Options == nil ||
-					!proto.HasExtension(meth.Options, options.E_Http) {
-					continue
-				}
+func getInfo(req *plugin.CodeGeneratorRequest) (Info, error) {
+	// From CodeGeneratorRequest's documentation:
+	//
+	// "FileDescriptorProtos for all files in files_to_generate and everything
+	// 	they import.  The files will appear in topological order, so each file
+	// 	appears before any file that imports it."
+	pfs := req.GetProtoFile()
+	pf := pfs[len(pfs)-1]
 
-				ext, err := proto.GetExtension(meth.Options, options.E_Http)
+	i := Info{
+		PkgName: pkgName(pf),
+		Table:   make(tables.Table),
+	}
+
+	for _, srv := range pf.GetService() {
+		for _, meth := range srv.GetMethod() {
+			if meth.Options == nil ||
+				!proto.HasExtension(meth.Options, options.E_Http) {
+				continue
+			}
+
+			ext, err := proto.GetExtension(meth.Options, options.E_Http)
+			if err != nil {
+				return Info{}, err
+			}
+			http, ok := ext.(*options.HttpRule)
+			if !ok {
+				return Info{}, fmt.Errorf("got %T, wanted *options.HttpRule", ext)
+			}
+
+			ext, _ = proto.GetExtension(meth.Options, eproto.E_Endpoint)
+			endp, ok := ext.(*eproto.Endpoint)
+			unauth := ok && endp.Unauthenticated
+
+			prefix := strings.TrimSuffix(i.PkgName, "pb")
+			action := prefix + "." + *meth.Name
+
+			err = parseTuple(http, i.Table, unauth, action)
+			if err != nil {
+				return Info{}, err
+			}
+
+			for _, http := range http.AdditionalBindings {
+				err := parseTuple(http, i.Table, unauth, action)
 				if err != nil {
-					return nil, err
-				}
-				http, ok := ext.(*options.HttpRule)
-				if !ok {
-					return nil, fmt.Errorf("got %T, wanted *options.HttpRule", ext)
-				}
-
-				ext, _ = proto.GetExtension(meth.Options, eproto.E_Endpoint)
-				endp, ok := ext.(*eproto.Endpoint)
-				unauth := ok && endp.Unauthenticated
-
-				prefix := strings.TrimSuffix(i.PkgName, "pb")
-				action := prefix + "." + *meth.Name
-
-				err = parseTuple(http, i.Table, unauth, action)
-				if err != nil {
-					return nil, err
-				}
-
-				for _, http := range http.AdditionalBindings {
-					err := parseTuple(http, i.Table, unauth, action)
-					if err != nil {
-						return nil, err
-					}
+					return Info{}, err
 				}
 			}
 		}
-		if len(i.Table) != 0 {
-			ifs = append(ifs, i)
-		}
 	}
-	return ifs, nil
+	return i, nil
 }
 
 // pkgName returns a suitable package name from file.
@@ -139,7 +139,6 @@ func pkgName(file *descriptor.FileDescriptorProto) string {
 		}
 		return strings.Replace(gopkg[i+1:], ".", "_", -1)
 	}
-
 	if file.Package == nil {
 		base := filepath.Base(file.GetName())
 		ext := filepath.Ext(base)
