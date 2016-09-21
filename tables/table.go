@@ -34,19 +34,17 @@ func MakeMapping(fns ...func() Table) Mapping {
 }
 
 // Mapping finds an endpoint based on a URL and HTTP method pair.
-func (m Mapping) Lookup(url, method string) (Endpoint, error) {
-	const errNotFound = err("url not found")
-
+func (m Mapping) Lookup(url, method string) (Endpoint, bool) {
 	eps, ok := m.t[url]
 	if !ok {
-		return Endpoint{}, errNotFound
+		return Endpoint{}, false
 	}
 	for _, e := range eps {
 		if e.Method == method {
-			return e, nil
+			return e, true
 		}
 	}
-	return Endpoint{}, errNotFound
+	return Endpoint{}, false
 }
 
 type err string
