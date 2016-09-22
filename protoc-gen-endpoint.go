@@ -150,31 +150,32 @@ func pkgName(file *descriptor.FileDescriptorProto) string {
 // parseTuple parses a new tables.Endpoint from http and adds it to table.
 func parseTuple(http *options.HttpRule, tbl tables.Table, unauth bool, action string) error {
 	var url string
-	ep := tables.Endpoint{Unauthenticated: unauth, Action: action}
+	act := tables.Action{Unauthenticated: unauth, Name: action}
 	switch v := http.Pattern.(type) {
 	case *options.HttpRule_Get:
 		url = v.Get
-		ep.Method = "GET"
+		act.Method = "GET"
 	case *options.HttpRule_Put:
 		url = v.Put
-		ep.Method = "PUT"
+		act.Method = "PUT"
 	case *options.HttpRule_Post:
 		url = v.Post
-		ep.Method = "POST"
+		act.Method = "POST"
 	case *options.HttpRule_Delete:
 		url = v.Delete
-		ep.Method = "DELETE"
+		act.Method = "DELETE"
 	case *options.HttpRule_Patch:
 		url = v.Patch
-		ep.Method = "PATCH"
+		act.Method = "PATCH"
 	case *options.HttpRule_Custom:
 		url = v.Custom.Path
-		ep.Method = v.Custom.Kind
+		act.Method = v.Custom.Kind
 	default:
-		return fmt.Errorf("unknown http.Patten: %T", http.Pattern)
+		return fmt.Errorf("unknown http.Pattern: %T", http.Pattern)
 	}
-
-	tbl[url] = append(tbl[url], ep)
+	ep := tbl[url]
+	ep.Add(act)
+	tbl[url] = ep
 	return nil
 }
 
@@ -187,14 +188,17 @@ import "github.com/SermoDigital/protoc-gen-endpoint/tables"
 func Table() tables.Table {
 	return tables.Table{
 		{{- range $url, $eps := .Table }}
-		{{ $url | printf "%q" }}: []tables.Endpoint{
-			{{ range $ep := $eps -}}
-			{
-				Method: {{- $ep.Method | printf "%q" }},
-				Unauthenticated: {{ $ep.Unauthenticated }},
-				Action: {{ $ep.Action | printf "%q" -}},
+		{{ $url | printf "%q" }}: tables.Endpoint{
+			Methods: {{ $eps.Methods | printf "%q" -}},
+			Actions: []tables.Action{
+				{{ range $act := $eps.Actions -}}
+				{
+					Name: {{ $act.Name | printf "%q" -}},
+					Method: {{- $act.Method | printf "%q" }},
+					Unauthenticated: {{ $act.Unauthenticated }},
+				},
+				{{- end }}
 			},
-			{{- end }}
 		},
 		{{- end  }}
 	}
