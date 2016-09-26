@@ -2,6 +2,8 @@
 // tables. A table is an RPC service's set of endpoints.
 package tables
 
+import "strings"
+
 // Table maps URLs to Endpoints.
 type Table map[string]Endpoint
 
@@ -30,7 +32,7 @@ type Endpoint struct {
 func (e *Endpoint) Add(act Action) {
 	if e.Methods == "" {
 		e.Methods = act.Method
-	} else {
+	} else if !strings.Contains(e.Methods, act.Method) {
 		e.Methods += "," + act.Method
 	}
 	e.Actions = append(e.Actions, act)
