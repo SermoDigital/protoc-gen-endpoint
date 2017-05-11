@@ -11,13 +11,13 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/SermoDigital/protoc-gen-endpoint/tables"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/protoc-gen-go/descriptor"
+	"github.com/sermodigital/protoc-gen-endpoint/tables"
 
-	eproto "github.com/SermoDigital/protoc-gen-endpoint/proto"
 	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
-	options "github.com/grpc-ecosystem/grpc-gateway/third_party/googleapis/google/api"
+	eproto "github.com/sermodigital/protoc-gen-endpoint/proto"
+	options "google.golang.org/genproto/googleapis/api/annotations"
 )
 
 func main() {
@@ -74,7 +74,7 @@ type Info struct {
 	Table   tables.Table
 }
 
-func getInfo(req *plugin.CodeGeneratorRequest) (Info, error) {
+func getInfo(req *plugin.CodeGeneratorRequest) (inf Info, err error) {
 	// From CodeGeneratorRequest's documentation:
 	//
 	// "FileDescriptorProtos for all files in files_to_generate and everything
@@ -83,10 +83,8 @@ func getInfo(req *plugin.CodeGeneratorRequest) (Info, error) {
 	pfs := req.GetProtoFile()
 	pf := pfs[len(pfs)-1]
 
-	i := Info{
-		PkgName: pkgName(pf),
-		Table:   make(tables.Table),
-	}
+	inf.PkgName = pkgName(pf)
+	inf.Table = make(tables.Table)
 
 	for _, srv := range pf.GetService() {
 		for _, meth := range srv.GetMethod() {
@@ -97,34 +95,34 @@ func getInfo(req *plugin.CodeGeneratorRequest) (Info, error) {
 
 			ext, err := proto.GetExtension(meth.Options, options.E_Http)
 			if err != nil {
-				return Info{}, err
+				return inf, err
 			}
 			http, ok := ext.(*options.HttpRule)
 			if !ok {
-				return Info{}, fmt.Errorf("got %T, wanted *options.HttpRule", ext)
+				return inf, fmt.Errorf("got %T, wanted *options.HttpRule", ext)
 			}
 
 			ext, _ = proto.GetExtension(meth.Options, eproto.E_Endpoint)
 			endp, ok := ext.(*eproto.Endpoint)
 			unauth := ok && endp.Unauthenticated
 
-			prefix := strings.TrimSuffix(i.PkgName, "pb")
+			prefix := strings.TrimSuffix(inf.PkgName, "pb")
 			action := prefix + "." + *meth.Name
 
-			err = parseTuple(http, i.Table, unauth, action)
+			err = parseTuple(http, inf.Table, unauth, action)
 			if err != nil {
-				return Info{}, err
+				return inf, err
 			}
 
 			for _, http := range http.AdditionalBindings {
-				err := parseTuple(http, i.Table, unauth, action)
+				err := parseTuple(http, inf.Table, unauth, action)
 				if err != nil {
-					return Info{}, err
+					return inf, err
 				}
 			}
 		}
 	}
-	return i, nil
+	return inf, nil
 }
 
 // pkgName returns a suitable package name from file.
@@ -182,7 +180,7 @@ func parseTuple(http *options.HttpRule, tbl tables.Table, unauth bool, action st
 const templ = `// Package {{ .PkgName }} creates a (URL, HTTP method) -> action lookup table
 package {{ .PkgName }}
 
-import "github.com/SermoDigital/protoc-gen-endpoint/tables"
+import "github.com/sermodigital/protoc-gen-endpoint/tables"
 
 // Table returns a tables.Table containing the endpoints within a gRPC package.
 func Table() tables.Table {
